@@ -1,0 +1,256 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "Create an EC2 resource with an existing keypair",
+  "Metadata": {},
+  "Parameters": {
+    "KeyName": {
+      "Description": "The EC2 Key Pair to allow SSH access to the instance",
+      "Type": "AWS::EC2::KeyPair::KeyName"
+    },
+    "InstanceNameTag": {
+      "Description": "The EC2 Name Tag",
+      "Type": "String"
+    },
+    "InstanceAMI":{
+      "Description": "The AMI Id",
+      "Type":"String"
+    },
+    "VpcId" : {
+      "Type" : "AWS::EC2::VPC::Id",
+      "Description" : "VPCId of Virtual Private Cloud (VPC)."
+    },
+    "ElasticIPAddress" : {
+      "Type" : "String",
+      "Description" : "Elastic IP to be associated."
+    },
+    "SubnetId": {
+      "Description" : "SubnetId in VPC",
+      "Type" : "AWS::EC2::Subnet::Id"
+    },
+    "InstanceType": {
+      "Description": "WebServer EC2 instance type",
+      "Type": "String",
+      "Default": "t2.micro",
+      "AllowedValues": [
+        "t2.small",
+        "t2.micro",
+        "t3.medium",
+        "m5.large"
+      ],
+      "ConstraintDescription": "must be a valid EC2 instance type."
+    }
+  },
+  "Resources": {
+    "EC2Role": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": [
+                  "ec2.amazonaws.com"
+                ]
+              },
+              "Action": "sts:AssumeRole"
+            }
+          ]
+        },
+        "Path": "/",
+        "ManagedPolicyArns": [
+          "arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess",
+          "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+        ],
+        "RoleName": {"Ref": "InstanceNameTag"}
+      }
+    },
+    "MyInstanceProfile": {
+      "Type": "AWS::IAM::InstanceProfile",
+      "Properties": {
+        "InstanceProfileName": {"Ref": "InstanceNameTag"},
+        "Path": "/",
+        "Roles": [
+          {"Ref": "InstanceNameTag"}
+        ]
+      }
+    },
+    "EC2Instance": {
+      "Type": "AWS::EC2::Instance",
+      "Metadata": {
+        "AWS::CloudFormation::Init": {
+          "config": {
+            "packages": {
+              "yum": {
+                "ruby": []
+              }
+            },
+            "files": {
+              "/home/ec2-user/install": {
+                "source": {
+                  "Fn::Join": [
+                    "",
+                    [
+                      "https://aws-codedeploy-",
+                      {
+                        "Ref": "AWS::Region"
+                      },
+                      ".s3.amazonaws.com/latest/install"
+                    ]
+                  ]
+                },
+                "mode": "000755"
+              }
+            },
+            "commands": {
+              "00-install-agent": {
+                "command": "./install auto",
+                "cwd": "/home/ec2-user/"
+              },
+              "01-cfn-signal": {
+                "command": {
+                  "Fn::Join": [
+                    "",
+                    [
+                      "/opt/aws/bin/cfn-signal -e 0 --stack ",
+                      {
+                        "Ref": "AWS::StackName"
+                      },
+                      " --resource EC2Instance --region ",
+                      {
+                        "Ref": "AWS::Region"
+                      }
+                    ]
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "Properties": {
+        "KeyName": {
+          "Ref": "KeyName"
+        },
+        "InstanceType": {
+          "Ref": "InstanceType"
+        },
+        "IamInstanceProfile": {"Ref": "InstanceNameTag"},
+        "ImageId": {"Ref": "InstanceAMI"},
+        "SecurityGroupIds": [{ "Fn::GetAtt" : ["InstanceSecurityGroup", "GroupId"] }],
+        "SubnetId": { "Ref": "SubnetId" },
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": {
+              "Ref": "InstanceNameTag"
+            }
+          }
+        ],
+        "UserData": {
+          "Fn::Base64": {
+            "Fn::Join": [
+              "",
+              [
+                "#!/bin/bash\n",
+                "yum -y update\n",
+                "yum -y install cfn-bootstrap\n",
+                "/opt/aws/bin/cfn-init -v",
+                " --stack ",
+                {
+                  "Ref": "AWS::StackName"
+                },
+                " --resource EC2Instance",
+                " --region ",
+                {
+                  "Ref": "AWS::Region"
+                },
+                "\n"
+              ]
+            ]
+          }
+        }
+      },
+      "CreationPolicy": {
+        "ResourceSignal": {
+          "Timeout": "PT5M"
+        }
+      }
+    },
+    "InstanceSecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "GroupName": { "Ref": "InstanceNameTag" },
+        "GroupDescription": "Enable SSH access via port 22",
+        "VpcId": {"Ref":"VpcId"},
+        "SecurityGroupIngress": [
+          {
+            "IpProtocol": "tcp",
+            "FromPort": "22",
+            "ToPort": "22",
+            "CidrIp": "0.0.0.0/0",
+            "Description": "My SSH Access"
+          },
+          {
+            "IpProtocol": "tcp",
+            "FromPort": "80",
+            "ToPort": "80",
+            "CidrIp": "0.0.0.0/0",
+            "Description": "Web"
+          }
+        ]
+      }
+    },
+    "ElasticIP": {
+      "Type": "AWS::EC2::EIPAssociation",
+      "Properties": {
+          "InstanceId": {"Ref" : "EC2Instance"},
+          "EIP": {"Ref" : "ElasticIPAddress"}
+      }
+    }
+  },
+  "Outputs": {
+    "EC2InstanceID": {
+      "Description": "ID of the newly created instance",
+      "Value": {
+        "Ref": "EC2Instance"
+      },
+      "Export": {
+        "Name": {
+          "Fn::Sub": "${AWS::StackName}-InstanceID"
+        }
+      }
+    },
+    "InstanceNameTag": {
+      "Description": "Instance Name Tag",
+      "Value": {
+        "Ref": "InstanceNameTag"
+      }
+    },
+    "SeverURL": {
+      "Description": "URL for newly created server",
+      "Value": {
+        "Fn::Join": [
+          "",
+          [
+            "http://",
+            {
+              "Fn::GetAtt": [
+                "EC2Instance",
+                "PublicDnsName"
+              ]
+            }
+          ]
+        ]
+      }
+    },
+    "StackName": {
+      "Description": "ServerStack",
+      "Value": {
+          "Ref": "AWS::StackName"
+      },
+      "Export" : { "Name" : {"Fn::Sub": "${AWS::StackName}" }}
+  }
+  }
+}
