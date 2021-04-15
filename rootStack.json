@@ -98,7 +98,7 @@
         "ServerStack": {
             "Type": "AWS::CloudFormation::Stack",
             "Properties": {
-                "TemplateURL": "https://cf-vincent.s3-eu-west-1.amazonaws.com/smpp/serverStack.json",
+                "TemplateURL": "https://s3bucket/serverStack.json",
                 "TimeoutInMinutes": "5",
                 "Parameters": {
                     "KeyName": {
@@ -128,7 +128,7 @@
         "AppStack": {
             "Type": "AWS::CloudFormation::Stack",
             "Properties": {
-                "TemplateURL": "https://cf-vincent.s3-eu-west-1.amazonaws.com/smpp/codedeployStack.json",
+                "TemplateURL": "https://s3bucket/codedeployStack.json",
                 "TimeoutInMinutes": "5",
                 "Parameters": {
                     "AppName": {
@@ -146,7 +146,7 @@
         "CodeBuildStack": {
             "Type": "AWS::CloudFormation::Stack",
             "Properties": {
-                "TemplateURL": "https://cf-vincent.s3-eu-west-1.amazonaws.com/smpp/codebuildStack.json",
+                "TemplateURL": "https://s3bucket/codebuildStack.json",
                 "TimeoutInMinutes": "5",
                 "Parameters": {
                     "CodeBuild": {
@@ -158,7 +158,7 @@
         "PipelineStack": {
             "Type": "AWS::CloudFormation::Stack",
             "Properties": {
-                "TemplateURL": "https://cf-vincent.s3-eu-west-1.amazonaws.com/smpp/codepipelineStack.json",
+                "TemplateURL": "https://s3bucket/codepipelineStack.json",
                 "TimeoutInMinutes": "5",
                 "Parameters": {
                     "BranchName": "master",
